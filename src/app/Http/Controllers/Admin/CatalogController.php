@@ -8,6 +8,7 @@ use App\Models\Design;
 use App\Services\FileUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Throwable;
 
 class CatalogController extends Controller
 {
@@ -49,20 +50,30 @@ class CatalogController extends Controller
             'image'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
-        $imageUrl = null;
-        if ($request->hasFile('image')) {
-            $imageUrl = $this->uploadService->upload($request->file('image'), 'designs');
-        }
+        $imagePath = null;
 
-        Design::create([
-            'category_id' => $request->category_id,
-            'name'        => $request->name,
-            'slug'        => Str::slug($request->name) . '-' . Str::random(5),
-            'description' => $this->sanitizeRichText($request->description),
-            'specification' => $this->sanitizeRichText($request->specification),
-            'price'       => $request->price,
-            'image_url'   => $imageUrl,
-        ]);
+        try {
+            if ($request->hasFile('image')) {
+                $imagePath = $this->uploadService->upload(
+                    $request->file('image'),
+                    'designs'
+                );
+            }
+
+            Design::create([
+                'category_id' => $request->category_id,
+                'name'        => $request->name,
+                'slug'        => Str::slug($request->name).'-'.Str::random(5),
+                'description' => $this->sanitizeRichText($request->description),
+                'specification' => $this->sanitizeRichText($request->specification),
+                'price'       => $request->price,
+                'image_url'   => $imagePath,
+            ]);
+        } catch (Throwable $exception) {
+            $this->uploadService->delete($imagePath);
+
+            throw $exception;
+        }
 
         return redirect()->route('admin.catalog.index')
             ->with('success', 'Desain berhasil ditambahkan.');
@@ -85,20 +96,38 @@ class CatalogController extends Controller
             'image'        => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
-        $imageUrl = $design->image_url;
-        if ($request->hasFile('image')) {
-            $imageUrl = $this->uploadService->upload($request->file('image'), 'designs');
-        }
-
-        $design->update([
+        $data = [
             'category_id' => $request->category_id,
             'name'        => $request->name,
             'slug'        => Str::slug($request->name),
             'description' => $this->sanitizeRichText($request->description),
             'specification' => $this->sanitizeRichText($request->specification),
             'price'       => $request->price,
-            'image_url'   => $imageUrl,
-        ]);
+        ];
+
+        $oldImagePath = $design->getRawOriginal('image_url');
+
+        $newImagePath = null;
+
+        try {
+            if ($request->hasFile('image')) {
+                $newImagePath = $this->uploadService->upload(
+                    $request->file('image'),
+                    'designs'
+                );
+                $data['image_url'] = $newImagePath;
+            }
+
+            $design->update($data);
+        } catch (Throwable $exception) {
+            $this->uploadService->delete($newImagePath);
+
+            throw $exception;
+        }
+
+        if ($newImagePath !== null && $oldImagePath !== $newImagePath) {
+            $this->uploadService->delete($oldImagePath);
+        }
 
         return redirect()->route('admin.catalog.index')
             ->with('success', 'Desain berhasil diperbarui.');

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\StoragePath;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -26,17 +28,12 @@ class Design extends Model
         'updated_at' => 'datetime',
     ];
 
-    /**
-     * Accessor: kembalikan URL publik dari image_url
-     * Mendukung nilai lama (http://...) maupun path relatif baru.
-     */
-    public function getImageUrlAttribute(?string $value): ?string
+    protected function imageUrl(): Attribute
     {
-        if (!$value) return null;
-        if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
-            return $value;
-        }
-        return asset(\Illuminate\Support\Facades\Storage::url($value));
+        return Attribute::make(
+            get: fn (?string $value) => StoragePath::publicUrl($value),
+            set: fn (?string $value) => StoragePath::normalize($value),
+        );
     }
 
     /**

@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Support\StoragePath;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class FileUploadService
 {
@@ -13,25 +15,43 @@ class FileUploadService
      *
      * @param UploadedFile $file
      * @param string       $folder  contoh: 'designs', 'custom-referensi', 'hasil'
-     * @return string      URL publik file
+     * @return string      Path relatif file
      */
     public function upload(UploadedFile $file, string $folder = 'uploads'): string
     {
-        $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-        $path     = $file->storeAs("uploads/{$folder}", $filename, 'public');
+        return $this->uploadTo($file, 'uploads/'.trim($folder, '/'));
+    }
 
-        // Simpan path relatif (bukan full URL) agar portable di semua environment
-        return $path;
+    /**
+     * Upload a file to an exact directory on the public disk.
+     */
+    public function uploadTo(UploadedFile $file, string $directory): string
+    {
+        $filename = Str::uuid().'.'.strtolower($file->getClientOriginalExtension());
+        $path = $file->storeAs(trim($directory, '/'), $filename, 'public');
+
+        if (!is_string($path) || $path === '') {
+            throw new RuntimeException('File gagal disimpan ke public storage.');
+        }
+
+        if (!Storage::disk('public')->exists($path)) {
+            throw new RuntimeException('File upload tidak ditemukan setelah disimpan.');
+        }
+
+        return StoragePath::normalize($path) ?? $path;
     }
 
     /**
      * Hapus file dari storage.
      */
-    public function delete(string $fileUrl): bool
+    public function delete(?string $filePath): bool
     {
-        // Konversi URL publik ke path storage
-           // Handle both relative /storage/... and absolute http://...../storage/...
-           $path = preg_replace('#^(https?://[^/]+)?/storage/#', '', $fileUrl);
-           return Storage::disk('public')->delete($path);
+        $path = StoragePath::normalize($filePath);
+
+        if ($path === null || StoragePath::isUrl($path)) {
+            return false;
+        }
+
+        return Storage::disk('public')->delete($path);
     }
 }

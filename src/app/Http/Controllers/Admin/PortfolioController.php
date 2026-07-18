@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Portfolio;
 use App\Models\Category;
+use App\Models\Portfolio;
+use App\Services\FileUploadService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class PortfolioController extends Controller
 {
+    public function __construct(protected FileUploadService $uploadService) {}
+
     public function index()
     {
         $portfolios = Portfolio::with('category')->orderBy('order')->latest()->paginate(20);
@@ -17,11 +20,11 @@ class PortfolioController extends Controller
     }
 
     public function create()
-{
-    $categories = Category::all();
+    {
+        $categories = Category::all();
 
-    return view('admin.portfolio.create', compact('categories'));
-}
+        return view('admin.portfolio.create', compact('categories'));
+    }
 
     public function store(Request $request)
     {
@@ -37,26 +40,35 @@ class PortfolioController extends Controller
             'order' => 'nullable|integer',
         ]);
 
-        if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('portfolios', 'public');
-            $validated['image_url'] = Storage::url($path);
-        }
+        $image = $validated['image'];
+        unset($validated['image']);
 
-        Portfolio::create($validated);
+        $imagePath = null;
+
+        try {
+            $imagePath = $this->uploadService->uploadTo($image, 'portfolios');
+            $validated['image_url'] = $imagePath;
+
+            Portfolio::create($validated);
+        } catch (Throwable $exception) {
+            $this->uploadService->delete($imagePath);
+
+            throw $exception;
+        }
 
         return redirect()->route('admin.portfolio.index')
             ->with('success', 'Portofolio berhasil ditambahkan');
     }
 
     public function edit(Portfolio $portfolio)
-{
-    $categories = Category::all();
+    {
+        $categories = Category::all();
 
-    return view(
-        'admin.portfolio.edit',
-        compact('portfolio', 'categories')
-    );
-}
+        return view(
+            'admin.portfolio.edit',
+            compact('portfolio', 'categories')
+        );
+    }
 
     public function update(Request $request, Portfolio $portfolio)
     {
@@ -72,18 +84,32 @@ class PortfolioController extends Controller
             'order' => 'nullable|integer',
         ]);
 
-        if ($request->hasFile('image')) {
-            // Hapus gambar lama
-            if ($portfolio->image_url) {
-                $oldPath = str_replace('/storage/', '', $portfolio->image_url);
-                Storage::disk('public')->delete($oldPath);
+        $image = $validated['image'] ?? null;
+        unset($validated['image']);
+
+        $oldImagePath = $portfolio->getRawOriginal('image_url');
+
+        $newImagePath = null;
+
+        try {
+            if ($image) {
+                $newImagePath = $this->uploadService->uploadTo(
+                    $image,
+                    'portfolios'
+                );
+                $validated['image_url'] = $newImagePath;
             }
-            
-            $path = $request->file('image')->store('portfolios', 'public');
-            $validated['image_url'] = Storage::url($path);
+
+            $portfolio->update($validated);
+        } catch (Throwable $exception) {
+            $this->uploadService->delete($newImagePath);
+
+            throw $exception;
         }
 
-        $portfolio->update($validated);
+        if ($newImagePath !== null && $oldImagePath !== $newImagePath) {
+            $this->uploadService->delete($oldImagePath);
+        }
 
         return redirect()->route('admin.portfolio.index')
             ->with('success', 'Portofolio berhasil diperbarui');
@@ -91,13 +117,11 @@ class PortfolioController extends Controller
 
     public function destroy(Portfolio $portfolio)
     {
-        // Hapus gambar
-        if ($portfolio->image_url) {
-            $path = str_replace('/storage/', '', $portfolio->image_url);
-            Storage::disk('public')->delete($path);
-        }
+        $imagePath = $portfolio->getRawOriginal('image_url');
 
         $portfolio->delete();
+
+        $this->uploadService->delete($imagePath);
 
         return redirect()->route('admin.portfolio.index')
             ->with('success', 'Portofolio berhasil dihapus');

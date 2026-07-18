@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Design;
+use App\Models\Portfolio;
 use Illuminate\Http\Request;
 
 class CatalogController extends Controller
@@ -58,7 +59,10 @@ class CatalogController extends Controller
 
     public function portfolio(Request $request)
     {
-        $portfolios = \App\Models\Portfolio::orderBy('order')->latest()->paginate(16);
+        $portfolios = Portfolio::with('category')
+            ->orderBy('order')
+            ->latest()
+            ->paginate(16);
 
         return view('catalog.portfolio', compact('portfolios'));
     }
