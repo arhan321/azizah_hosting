@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderResult;
+use App\Models\Payment;
 use App\Services\FileUploadService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -117,20 +119,68 @@ class OrderController extends Controller
             'admin_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $order->customOrder->update([
-            'admin_quote' => $request->admin_quote,
-            'admin_notes' => $request->admin_notes,
-        ]);
+        return DB::transaction(function () use ($request, $order) {
+            /*
+             * Ambil ulang pesanan dengan row lock agar harga tidak dapat berubah
+             * bersamaan dengan proses verifikasi pembayaran.
+             */
+            $lockedOrder = Order::query()
+                ->with('customOrder')
+                ->lockForUpdate()
+                ->findOrFail($order->id);
 
-        // Update total price di order utama
-        $order->update([
-            'total_price' => $request->admin_quote,
-            'status'      => Order::STATUS_APPROVED,
-        ]);
+            abort_if(
+                $lockedOrder->order_type !== Order::ORDER_TYPE_CUSTOM
+                || !$lockedOrder->customOrder,
+                404
+            );
 
-        // Notifikasi ke pelanggan
-        $this->notifService->notifyQuoteReady($order);
+            /*
+             * Harga dikunci apabila:
+             * 1. Status pembayaran pesanan sudah DP dibayar atau lunas; atau
+             * 2. Sudah ada minimal satu pembayaran dengan status success.
+             *
+             * Pemeriksaan pembayaran success tetap dilakukan untuk mengantisipasi
+             * data lama yang status payment_status pada tabel orders belum sinkron.
+             */
+            $hasSuccessfulPayment = $lockedOrder->payments()
+                ->where('status', Payment::STATUS_SUCCESS)
+                ->exists();
 
-        return back()->with('success', 'Harga custom berhasil ditetapkan. Pelanggan telah dinotifikasi.');
+            $quoteIsLocked = in_array(
+                $lockedOrder->payment_status,
+                [
+                    Order::PAYMENT_STATUS_DP_PAID,
+                    Order::PAYMENT_STATUS_FULLY_PAID,
+                ],
+                true
+            ) || $hasSuccessfulPayment;
+
+            if ($quoteIsLocked) {
+                return back()->with(
+                    'error',
+                    'Harga custom tidak dapat diubah karena pelanggan sudah melakukan pembayaran DP atau pelunasan.'
+                );
+            }
+
+            $lockedOrder->customOrder->update([
+                'admin_quote' => $request->admin_quote,
+                'admin_notes' => $request->admin_notes,
+            ]);
+
+            // Update total price di order utama
+            $lockedOrder->update([
+                'total_price' => $request->admin_quote,
+                'status'      => Order::STATUS_APPROVED,
+            ]);
+
+            // Notifikasi ke pelanggan
+            $this->notifService->notifyQuoteReady($lockedOrder);
+
+            return back()->with(
+                'success',
+                'Harga custom berhasil ditetapkan. Pelanggan telah dinotifikasi.'
+            );
+        });
     }
 }

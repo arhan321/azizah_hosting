@@ -95,37 +95,123 @@
                 </div>
                 @endif
 
+                @php
+                    /*
+                     * Harga dikunci apabila status order sudah DP dibayar/lunas,
+                     * atau terdapat pembayaran dengan status success.
+                     */
+                    $hasSuccessfulPayment = $order->payments->contains(function ($payment) {
+                        return $payment->status === 'success';
+                    });
+
+                    $quoteIsLocked = in_array(
+                        $order->payment_status,
+                        [
+                            \App\Models\Order::PAYMENT_STATUS_DP_PAID,
+                            \App\Models\Order::PAYMENT_STATUS_FULLY_PAID,
+                        ],
+                        true
+                    ) || $hasSuccessfulPayment;
+                @endphp
+
                 {{-- Set Quote --}}
                 <hr>
-                <p class="fw-semibold mb-3">
-                    <i class="bi bi-tag me-1 text-success"></i>
-                    {{ $order->customOrder->admin_quote ? 'Ubah Harga Custom' : 'Tetapkan Harga Custom' }}
-                    @if($order->customOrder->admin_quote)
-                        <span class="ms-2 text-success">— saat ini: Rp {{ number_format($order->customOrder->admin_quote, 0, ',', '.') }}</span>
-                    @endif
-                </p>
-                <form method="POST" action="{{ route('admin.orders.setQuote', $order->id) }}">
-                    @csrf
+
+                @if($quoteIsLocked)
+                    <p class="fw-semibold mb-3">
+                        <i class="bi bi-lock-fill me-1 text-success"></i>
+                        Harga Custom Terkunci
+
+                        @if($order->customOrder->admin_quote)
+                            <span class="ms-2 text-success">
+                                — Rp {{ number_format($order->customOrder->admin_quote, 0, ',', '.') }}
+                            </span>
+                        @endif
+                    </p>
+
+                    <div class="alert alert-success d-flex align-items-start gap-2 mb-3" role="alert">
+                        <i class="bi bi-shield-check fs-5"></i>
+                        <div>
+                            <div class="fw-semibold">Harga tidak dapat diubah lagi.</div>
+                            <div class="small">
+                                Pelanggan sudah melakukan pembayaran DP atau pelunasan.
+                                Harga pesanan dikunci untuk menjaga kesesuaian transaksi.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row g-2">
                         <div class="col-12 col-md-4">
                             <label class="form-label small fw-semibold mb-1">Harga (Rp)</label>
-                            <input type="number" name="admin_quote" class="form-control form-control-sm"
-                                   placeholder="contoh: 2500000"
-                                   value="{{ $order->customOrder->admin_quote }}" min="1" required>
+                            <input
+                                type="text"
+                                class="form-control form-control-sm"
+                                value="{{ $order->customOrder->admin_quote ? 'Rp ' . number_format($order->customOrder->admin_quote, 0, ',', '.') : '-' }}"
+                                readonly
+                                disabled>
                         </div>
+
                         <div class="col-12 col-md-5">
                             <label class="form-label small fw-semibold mb-1">Catatan untuk Pelanggan</label>
-                            <input type="text" name="admin_notes" class="form-control form-control-sm"
-                                   placeholder="contoh: Termasuk bahan & jasa pasang"
-                                   value="{{ $order->customOrder->admin_notes }}">
+                            <input
+                                type="text"
+                                class="form-control form-control-sm"
+                                value="{{ $order->customOrder->admin_notes ?: '-' }}"
+                                readonly
+                                disabled>
                         </div>
+
                         <div class="col-12 col-md-3 d-flex align-items-end">
-                            <button type="submit" class="btn btn-sm btn-success w-100">
-                                <i class="bi bi-check-lg me-1"></i> Tetapkan & Setujui
+                            <button type="button" class="btn btn-sm btn-secondary w-100" disabled>
+                                <i class="bi bi-lock-fill me-1"></i> Harga Terkunci
                             </button>
                         </div>
                     </div>
-                </form>
+                @else
+                    <p class="fw-semibold mb-3">
+                        <i class="bi bi-tag me-1 text-success"></i>
+                        {{ $order->customOrder->admin_quote ? 'Ubah Harga Custom' : 'Tetapkan Harga Custom' }}
+
+                        @if($order->customOrder->admin_quote)
+                            <span class="ms-2 text-success">
+                                — saat ini: Rp {{ number_format($order->customOrder->admin_quote, 0, ',', '.') }}
+                            </span>
+                        @endif
+                    </p>
+
+                    <form method="POST" action="{{ route('admin.orders.setQuote', $order->id) }}">
+                        @csrf
+                        <div class="row g-2">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label small fw-semibold mb-1">Harga (Rp)</label>
+                                <input
+                                    type="number"
+                                    name="admin_quote"
+                                    class="form-control form-control-sm"
+                                    placeholder="contoh: 2500000"
+                                    value="{{ old('admin_quote', $order->customOrder->admin_quote) }}"
+                                    min="1"
+                                    required>
+                            </div>
+
+                            <div class="col-12 col-md-5">
+                                <label class="form-label small fw-semibold mb-1">Catatan untuk Pelanggan</label>
+                                <input
+                                    type="text"
+                                    name="admin_notes"
+                                    class="form-control form-control-sm"
+                                    placeholder="contoh: Termasuk bahan & jasa pasang"
+                                    value="{{ old('admin_notes', $order->customOrder->admin_notes) }}">
+                            </div>
+
+                            <div class="col-12 col-md-3 d-flex align-items-end">
+                                <button type="submit" class="btn btn-sm btn-success w-100">
+                                    <i class="bi bi-check-lg me-1"></i> Tetapkan & Setujui
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                @endif
             </div>
         </div>
         @endif

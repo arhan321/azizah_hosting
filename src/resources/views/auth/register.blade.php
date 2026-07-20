@@ -133,6 +133,17 @@
                 autocomplete="new-password"
                 placeholder="Minimal 8 karakter">
 
+            <button
+                type="button"
+                class="input-group-text bg-white"
+                onclick="toggleRegisterPassword('password', 'togglePasswordIcon')"
+                aria-label="Tampilkan atau sembunyikan password"
+                title="Tampilkan atau sembunyikan password">
+
+                <i id="togglePasswordIcon" class="bi bi-eye"></i>
+
+            </button>
+
         </div>
 
         @error('password')
@@ -163,6 +174,17 @@
                 class="form-control @error('password_confirmation') is-invalid @enderror"
                 required
                 autocomplete="new-password">
+
+            <button
+                type="button"
+                class="input-group-text bg-white"
+                onclick="toggleRegisterPassword('password_confirmation', 'togglePasswordConfirmationIcon')"
+                aria-label="Tampilkan atau sembunyikan konfirmasi password"
+                title="Tampilkan atau sembunyikan konfirmasi password">
+
+                <i id="togglePasswordConfirmationIcon" class="bi bi-eye"></i>
+
+            </button>
 
             @error('password_confirmation')
             <div class="invalid-feedback">
@@ -196,5 +218,26 @@
         </div>
 
 </form>
+
+<script>
+    function toggleRegisterPassword(inputId, iconId) {
+        const passwordInput = document.getElementById(inputId);
+        const toggleIcon = document.getElementById(iconId);
+
+        if (!passwordInput || !toggleIcon) {
+            return;
+        }
+
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            toggleIcon.classList.remove('bi-eye');
+            toggleIcon.classList.add('bi-eye-slash');
+        } else {
+            passwordInput.type = 'password';
+            toggleIcon.classList.remove('bi-eye-slash');
+            toggleIcon.classList.add('bi-eye');
+        }
+    }
+</script>
 
 @endsection
