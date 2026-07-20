@@ -52,7 +52,7 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'https://azizah.djncloud.my.id'),
+    'url' => env('APP_URL', 'https://aqlammuralkaligrafi.my.id'),
 
     /*
     |--------------------------------------------------------------------------
